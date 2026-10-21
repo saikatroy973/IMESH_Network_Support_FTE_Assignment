@@ -1,0 +1,35 @@
+# kind cluster definition for the IMESH Kubernetes Network Support Engineer assignment.
+#
+# Topology:
+#   imesh-control-plane  -> runs the kube-apiserver, CoreDNS and the CNI daemonset
+#   imesh-worker         -> runs the application workloads (client / frontend / backend)
+#
+# Keeping the workloads on a separate worker node guarantees that the
+# client -> frontend -> backend traffic crosses a real node boundary, which
+# means kube-proxy ClusterIP DNAT rules are genuinely exercised.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: imesh
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          # Remove the default control-plane NoSchedule taint so that a workload can be
+          # pinned onto the control-plane node.  The client workload is scheduled there
+          # on purpose: it forces client -> frontend traffic to cross a real node
+          # boundary instead of staying inside one node's iptables rules.
+          taints: []
+          kubeletExtraArgs:
+            node-labels: "imesh.ai/role=control-plane"
+  - role: worker
+    kubeadmConfigPatches:
+      - |
+        kind: JoinConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "imesh.ai/role=worker"
+networking:
+  apiServerAddress: "127.0.0.1"
+  apiServerPort: 6443

@@ -1,0 +1,31 @@
+##############################################################################
+# THE INJECTED FAULT  -  do NOT apply this in a healthy cluster.
+#
+# Scenario:
+#   The backend container keeps listening on 8080 (see manifests/10-backend.yaml),
+#   but the backend Service is (re)written so that kube-proxy DNATs
+#   ClusterIP:80  ->  <podIP>:9090, where nothing is listening.
+#
+#   Result: the Endpoint object still exists (so "does the Service have
+#   endpoints?" is NOT the answer), but every connection is answered with a
+#   TCP RST -> "Connection refused".
+#
+#   This is applied by scripts/04-inject-fault.sh
+##############################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: imesh-demo
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: imesh-demo
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 9090   # <-- BUG: the backend container listens on 8080
+      protocol: TCP

@@ -1,0 +1,30 @@
+
+==========================================================================
+  STEP 3 - Deploy the application
+==========================================================================
+namespace/imesh-demo created
+configmap/backend-nginx-config created
+deployment.apps/backend created
+service/backend created
+configmap/frontend-nginx-config created
+deployment.apps/frontend created
+service/frontend created
+deployment.apps/client created
+    waiting for the workloads to become ready ...
+Waiting for deployment "backend" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "backend" rollout to finish: 1 of 2 updated replicas are available...
+deployment "backend" successfully rolled out
+deployment "frontend" successfully rolled out
+deployment "client" successfully rolled out
+    waiting for the Service endpoints to be programmed into kube-proxy ...
+    !    timed out waiting for ready endpoints
+    pods:
+      backend-6d448c44cf-7vbxf    1/1   Running   0     67s   10.244.1.3   imesh-worker          <none>   <none>
+      backend-6d448c44cf-scn8g    1/1   Running   0     67s   10.244.1.2   imesh-worker          <none>   <none>
+      client-dccd6f788-cgcj6      1/1   Running   0     66s   10.244.0.5   imesh-control-plane   <none>   <none>
+      frontend-64bbfbffdf-c8nq4   1/1   Running   0     66s   10.244.1.5   imesh-worker          <none>   <none>
+      frontend-64bbfbffdf-hb7dc   1/1   Running   0     66s   10.244.1.4   imesh-worker          <none>   <none>
+    services:
+      backend    ClusterIP   10.96.116.237   <none>   80/TCP   67s
+      frontend   ClusterIP   10.96.139.236   <none>   80/TCP   66s
+    OK   application deployed

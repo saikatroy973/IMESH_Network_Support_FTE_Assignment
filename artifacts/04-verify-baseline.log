@@ -1,0 +1,19 @@
+
+==========================================================================
+  STEP 4 - Baseline verification (healthy cluster)
+==========================================================================
+    DNS resolution from the client pod:
+      10.96.139.236     frontend.imesh-demo.svc.cluster.local  frontend.imesh-demo.svc.cluster.local
+      10.96.116.237     backend.imesh-demo.svc.cluster.local  backend.imesh-demo.svc.cluster.local
+    
+    OK   client -> frontend            : PASS  (FRONTEND-OK  pod=frontend-64bbfbffdf-hb7dc  client=10.244.0.5)
+    OK   frontend -> backend           : PASS  (BACKEND-OK  pod=backend-6d448c44cf-7vbxf  client=10.244.1.5)
+    OK   client -> frontend -> backend  : PASS  (BACKEND-OK  pod=backend-6d448c44cf-7vbxf  client=10.244.1.5)
+    OK   backend own port 8080        : PASS  (app is alive and serving)
+    OK   frontend own port 8080        : PASS  (app is alive and serving)
+    
+    client health loop (last 3 lines):
+      [2026-10-21T12:01:34Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=200
+      [2026-10-21T12:01:44Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=200
+      [2026-10-21T12:01:54Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=200
+    OK   BASELINE HEALTHY - client -> frontend and frontend -> backend both work

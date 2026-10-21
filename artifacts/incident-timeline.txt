@@ -1,0 +1,39 @@
+===============================================================
+ INCIDENT TIMELINE - observed from the client workload
+ namespace : imesh-demo
+ cluster   : kind-imesh
+===============================================================
+
+### 1. HEALTHY  (before the fault)   2026-10-21T12:02:31Z
+    client -> frontend                                    -> 200
+    client -> frontend(/api/) -> backend                  -> 200
+
+      [2026-10-21T12:01:54Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=200
+      [2026-10-21T12:02:04Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=502
+      [2026-10-21T12:02:14Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=502
+      [2026-10-21T12:02:24Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=200
+
+---------------------------------------------------------------
+### 2. FAULT INJECTED  2026-10-21T12:02:56Z
+    backend Service .spec.ports[0].targetPort : 8080 -> 9090
+
+      [2026-10-21T12:02:24Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=200
+      [2026-10-21T12:02:34Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=502
+      [2026-10-21T12:02:44Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=502
+      [2026-10-21T12:02:54Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=502
+
+    >>> customer symptom: the frontend itself is still healthy (200),
+    >>> but every API call the frontend makes to the backend fails (502).
+
+---------------------------------------------------------------
+### 3. ROOT CAUSE FIXED  2026-10-21T12:03:21Z
+    backend Service .spec.ports[0].targetPort : 9090 -> 8080
+
+      [2026-10-21T12:02:44Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=502
+      [2026-10-21T12:02:54Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=502
+      [2026-10-21T12:03:04Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=200
+      [2026-10-21T12:03:14Z] client -> frontend  http_code=200   |   client -> frontend(/api/) -> backend  http_code=200
+
+===============================================================
+ END OF TIMELINE
+===============================================================

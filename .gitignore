@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# Assignment brief (provided, not part of the deliverable)
+/pdf/
+
+# Local cluster state
+*.kubeconfig
+kubeconfig*
+
+# Editor / OS noise
+*.swp
+*~
+.idea/
+.vscode/

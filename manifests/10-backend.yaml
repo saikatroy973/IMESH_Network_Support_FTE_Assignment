@@ -1,0 +1,119 @@
+##############################################################################
+# backend - the last hop of the application flow (client -> frontend -> backend)
+#
+# The backend listens on port 8080 inside the container.  The Service exposes
+# port 80 and forwards to targetPort 8080.
+##############################################################################
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-nginx-config
+  namespace: imesh-demo
+data:
+  nginx.conf: |
+    worker_processes auto;
+    error_log  /dev/stderr warn;
+    pid        /run/nginx.pid;
+
+    events {
+      worker_connections 1024;
+    }
+
+    http {
+      include       /etc/nginx/mime.types;
+      default_type  application/octet-stream;
+
+      access_log    /dev/stdout;
+      error_log     /dev/stderr warn;
+
+      client_body_temp_path /tmp/client_temp;
+      proxy_temp_path       /tmp/proxy_temp;
+      fastcgi_temp_path     /tmp/fastcgi_temp;
+      uwsgi_temp_path       /tmp/uwsgi_temp;
+      scgi_temp_path        /tmp/scgi_temp;
+
+      server {
+        listen 8080;
+        server_name backend;
+
+        # Health endpoint used by the kubelet probes.
+        location = /healthz {
+          access_log off;
+          default_type text/plain;
+          return 200 "ok\n";
+        }
+
+        location / {
+          default_type text/plain;
+          return 200 "BACKEND-OK  pod=$hostname  client=$remote_addr\n";
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: imesh-demo
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: imesh-demo
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/part-of: imesh-demo
+    spec:
+      nodeSelector:
+        imesh.ai/role: worker
+      containers:
+        - name: backend
+          image: imesh-demo-app:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          volumeMounts:
+            - name: nginx-config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+      volumes:
+        - name: nginx-config
+          configMap:
+            name: backend-nginx-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: imesh-demo
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: imesh-demo
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP

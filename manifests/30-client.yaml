@@ -1,0 +1,70 @@
+##############################################################################
+# client - the entry point of the application flow.
+#
+# The client runs a 10 second health loop against the frontend Service and
+# prints the result to stdout, so `kubectl logs deploy/client` gives a
+# timestamped before/after picture of the incident.
+#
+# It is pinned to the control-plane node (kind removes that node's NoSchedule
+# taint) so that client -> frontend traffic crosses a node boundary.
+##############################################################################
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: client
+  namespace: imesh-demo
+  labels:
+    app.kubernetes.io/name: client
+    app.kubernetes.io/part-of: imesh-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: client
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: client
+        app.kubernetes.io/part-of: imesh-demo
+    spec:
+      nodeSelector:
+        imesh.ai/role: control-plane
+      tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: client
+          image: imesh-demo-app:1.0.0
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -c
+            - |
+              # Warm-up: wait until the frontend Service actually serves traffic.
+              # DNS resolution alone is not enough - right after a rollout the
+              # EndpointSlice may not be programmed into kube-proxy yet, and a
+              # request sent in that window is rejected by the REJECT rule.
+              echo "[$(date -u +%FT%TZ)] waiting for the frontend Service to serve traffic ..."
+              for i in $(seq 1 60); do
+                code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 \
+                        http://frontend.imesh-demo.svc.cluster.local/ 2>/dev/null) || code="000"
+                [ "${code}" = "200" ] && break
+                sleep 2
+              done
+              echo "[$(date -u +%FT%TZ)] frontend Service is reachable - starting health loop"
+
+              while true; do
+                root=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+                        http://frontend.imesh-demo.svc.cluster.local/ 2>/dev/null) || root="CONN_ERROR"
+                api=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+                        http://frontend.imesh-demo.svc.cluster.local/api/ 2>/dev/null) || api="CONN_ERROR"
+                echo "[$(date -u +%FT%TZ)] client -> frontend  http_code=${root}   |   client -> frontend(/api/) -> backend  http_code=${api}"
+                sleep 10
+              done
+          volumeMounts:
+            - name: shared
+              mountPath: /tmp
+      volumes:
+        - name: shared
+          emptyDir: {}

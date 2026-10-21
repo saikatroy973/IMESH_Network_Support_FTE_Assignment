@@ -1,0 +1,47 @@
+
+==========================================================================
+  STEP 1 - Create the kind cluster 'imesh'
+==========================================================================
+    creating cluster from /Users/saikat/projects/IMESH/kind-config.yaml ...
+Creating cluster "imesh" ...
+ • Ensuring node image (kindest/node:v1.37.0) 🖼️  ...
+ ✓ Ensuring node image (kindest/node:v1.37.0) 🖼️
+ • Preparing nodes 📦 📦   ...
+ ✓ Preparing nodes 📦 📦 
+ • Writing configuration 📜  ...
+ ✓ Writing configuration 📜
+ • Starting control-plane 🕹️  ...
+ ✓ Starting control-plane 🕹️
+ • Installing CNI 🔌  ...
+ ✓ Installing CNI 🔌
+ • Installing StorageClass 💾  ...
+ ✓ Installing StorageClass 💾
+ • Joining worker nodes 🚜  ...
+ ✓ Joining worker nodes 🚜
+ • Waiting ≤ 3m0s for control-plane = Ready ⏳  ...
+ ✓ Waiting ≤ 3m0s for control-plane = Ready ⏳
+ • Ready after 10s 💚
+Set kubectl context to "kind-imesh"
+You can now use your cluster with:
+
+kubectl cluster-info --context kind-imesh
+
+Have a question, bug, or feature request? Let us know! https://kind.sigs.k8s.io/#community 🙂
+    OK   cluster 'imesh' created
+    nodes:
+      imesh-control-plane   Ready      control-plane   20s   v1.37.0   172.19.0.2   <none>   Debian GNU/Linux 13 (trixie)   6.12.76-linuxkit (arm64)   containerd://2.3.4
+      imesh-worker          NotReady   <none>          11s   v1.37.0   172.19.0.3   <none>   Debian GNU/Linux 13 (trixie)   6.12.76-linuxkit (arm64)   containerd://2.3.4
+    kube-system components (CNI + DNS):
+      coredns-559f6c778d-qm2lq                      0/1   ContainerCreating   0     11s
+      coredns-559f6c778d-t2nc6                      0/1   ContainerCreating   0     11s
+      etcd-imesh-control-plane                      1/1   Running             0     18s
+      kindnet-7tk59                                 1/1   Running             0     11s
+      kindnet-vknhs                                 1/1   Running             0     11s
+      kube-apiserver-imesh-control-plane            1/1   Running             0     18s
+      kube-controller-manager-imesh-control-plane   1/1   Running             0     18s
+      kube-proxy-vkdc5                              1/1   Running             0     11s
+      kube-proxy-xzh69                              1/1   Running             0     11s
+      kube-scheduler-imesh-control-plane            1/1   Running             0     19s
+    coredns deployment:
+      coredns   0/2   2     0     18s
+    OK   cluster is ready

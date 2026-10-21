@@ -1,0 +1,185 @@
+
+==========================================================================
+  STEP 6 - Troubleshooting runbook
+==========================================================================
+
+--- L0  SYMPTOM: reproduce the reported failure -------------
+    client -> frontend (expected to still work):
+      FRONTEND-OK  pod=frontend-64bbfbffdf-c8nq4  client=10.244.0.5
+    
+    frontend -> backend (reported as broken):
+      * Host backend.imesh-demo.svc.cluster.local:80 was resolved.
+      * IPv6: (none)
+      * IPv4: 10.96.116.237
+      *   Trying 10.96.116.237:80...
+      * connect to 10.96.116.237 port 80 from 10.244.1.5 port 53878 failed: Connection refused
+      * Failed to connect to backend.imesh-demo.svc.cluster.local port 80 after 0 ms: Could not connect to server
+      * closing connection #0
+      curl: (7) Failed to connect to backend.imesh-demo.svc.cluster.local port 80 after 0 ms: Could not connect to server
+      command terminated with exit code 7
+
+--- L1  DNS: does the Service name resolve? -------------------
+    getent hosts backend.imesh-demo.svc.cluster.local:
+      10.96.116.237     backend.imesh-demo.svc.cluster.local  backend.imesh-demo.svc.cluster.local
+    dig +short (from the client pod, to show CoreDNS is answering):
+      10.96.116.237
+    Service ClusterIP from the API:
+      backend   ClusterIP   10.96.116.237   <none>   80/TCP   68s   app.kubernetes.io/name=backend
+
+--- L2  SERVICE: what does the backend Service map to? ---------
+    kubectl get svc backend -o yaml (relevant fields):
+            port=80  targetPort=9090  protocol=TCP  name=http
+    selector:
+      {"app.kubernetes.io/name":"backend"}
+
+--- L3  ENDPOINTS: which pods back the Service, on which port? 
+    kubectl get endpoints backend:
+Warning: v1 Endpoints is deprecated in v1.33+; use discovery.k8s.io/v1 EndpointSlice
+      backend   10.244.1.2:9090,10.244.1.3:9090   69s
+    
+    kubectl get endpointslices (modern source of truth):
+            endpoints=10.244.1.3 10.244.1.2  ready=true true  ports=9090
+    
+    kubectl describe svc backend (Events + spec):
+      Name:                     backend
+      Namespace:                imesh-demo
+      Labels:                   app.kubernetes.io/name=backend
+                                app.kubernetes.io/part-of=imesh-demo
+      Annotations:              <none>
+      Selector:                 app.kubernetes.io/name=backend
+      Type:                     ClusterIP
+      IP Family Policy:         SingleStack
+      IP Families:              IPv4
+      IP:                       10.96.116.237
+      IPs:                      10.96.116.237
+      Port:                     http  80/TCP
+      TargetPort:               9090/TCP
+      Endpoints:                10.244.1.3:9090,10.244.1.2:9090
+      Session Affinity:         None
+      Internal Traffic Policy:  Cluster
+      Events:                   <none>
+
+--- L4  POD: which port does the container declare? ------------
+    kubectl describe pod (container ports):
+      Name:             backend-6d448c44cf-7vbxf
+      Namespace:        imesh-demo
+      Node:             imesh-worker/172.19.0.3
+      Status:           Running
+      IP:               10.244.1.3
+      Controlled By:  ReplicaSet/backend-6d448c44cf
+      Containers:
+        Ready                       True 
+      Node-Selectors:              imesh.ai/role=worker
+      Name:             backend-6d448c44cf-scn8g
+      Namespace:        imesh-demo
+      Node:             imesh-worker/172.19.0.3
+      Status:           Running
+      IP:               10.244.1.2
+      Controlled By:  ReplicaSet/backend-6d448c44cf
+      Containers:
+        Ready                       True 
+      Node-Selectors:              imesh.ai/role=worker
+    
+    declared containerPort:
+            name=http  containerPort=8080  protocol=TCP
+
+--- L5  APP: is the process alive, and on which socket? ---------
+    ss -lntp inside the backend pod (the authoritative answer):
+      State  Recv-Q Send-Q Local Address:Port Peer Address:PortProcess                      
+      LISTEN 0      511          0.0.0.0:8080      0.0.0.0:*    users:(("nginx",pid=1,fd=6))
+    
+    container log tail (nginx started normally?):
+      [pod/backend-6d448c44cf-7vbxf/backend] 10.244.1.5 - - [21/Oct/2026:12:01:55 +0000] "GET / HTTP/1.1" 200 60 "-" "curl/8.14.1"
+      [pod/backend-6d448c44cf-7vbxf/backend] 10.244.1.5 - - [21/Oct/2026:12:01:56 +0000] "GET / HTTP/1.0" 200 60 "-" "curl/8.14.1"
+      [pod/backend-6d448c44cf-7vbxf/backend] 127.0.0.1 - - [21/Oct/2026:12:01:56 +0000] "GET / HTTP/1.1" 200 59 "-" "curl/8.14.1"
+      [pod/backend-6d448c44cf-scn8g/backend] 10.244.1.5 - - [21/Oct/2026:12:01:14 +0000] "GET / HTTP/1.0" 200 60 "-" "curl/8.14.1"
+      [pod/backend-6d448c44cf-scn8g/backend] 10.244.1.5 - - [21/Oct/2026:12:01:24 +0000] "GET / HTTP/1.0" 200 60 "-" "curl/8.14.1"
+      [pod/backend-6d448c44cf-scn8g/backend] 10.244.1.5 - - [21/Oct/2026:12:01:34 +0000] "GET / HTTP/1.0" 200 60 "-" "curl/8.14.1"
+      [pod/backend-6d448c44cf-scn8g/backend] 10.244.1.5 - - [21/Oct/2026:12:01:44 +0000] "GET / HTTP/1.0" 200 60 "-" "curl/8.14.1"
+      [pod/backend-6d448c44cf-scn8g/backend] 10.244.1.4 - - [21/Oct/2026:12:01:54 +0000] "GET / HTTP/1.0" 200 60 "-" "curl/8.14.1"
+
+--- L6  CROSS-CHECK: bypass the Service and hit the pod IP -----
+    backend pod IP = 10.244.1.3
+    a) frontend -> podIP:8080   (the port the app really listens on):
+      BACKEND-OK  pod=backend-6d448c44cf-7vbxf  client=10.244.1.5
+    b) frontend -> podIP:9090   (the port the Service is now pointing at):
+      curl: (7) Failed to connect to 10.244.1.3 port 9090 after 0 ms: Could not connect to server
+      command terminated with exit code 7
+    c) frontend -> ClusterIP:80 (the Service, i.e. the reported symptom):
+      curl: (7) Failed to connect to 10.96.116.237 port 80 after 0 ms: Could not connect to server
+      command terminated with exit code 7
+
+--- L7  PACKET CAPTURE: what goes on the wire? ----------------
+    Two captures inside the BACKEND pods. The client sees the ClusterIP;
+    the backend pod sees the post-DNAT destination.
+    
+    (a) traffic on port 9090 - the port the Service points at.
+        kube-proxy load-balances 50/50 across the replicas, so the capture is
+        started on EVERY backend pod to be sure to catch the DNAT'ed traffic:
+      --- capture on backend-6d448c44cf-7vbxf ---
+12:02:00.780282 eth0  In  IP 10.244.1.5.50200 > 10.244.1.3.9090: Flags [S], seq 2171988689, win 65495, options [mss 65495,sackOK,TS val 1700977689 ecr 0,nop,wscale 7], length 0
+12:02:00.780294 eth0  Out IP 10.244.1.3.9090 > 10.244.1.5.50200: Flags [R.], seq 0, ack 2171988690, win 0, length 0
+12:02:04.650530 eth0  In  IP 10.244.1.5.50204 > 10.244.1.3.9090: Flags [S], seq 3142207470, win 65495, options [mss 65495,sackOK,TS val 1700981559 ecr 0,nop,wscale 7], length 0
+12:02:04.650539 eth0  Out IP 10.244.1.3.9090 > 10.244.1.5.50204: Flags [R.], seq 0, ack 3142207471, win 0, length 0
+      --- capture on backend-6d448c44cf-scn8g ---
+    
+    (b) traffic on port 8080 - the port the app really listens on
+        (the kubelet health probe lands here and succeeds):
+      --- capture on backend-6d448c44cf-7vbxf ---
+12:02:08.212841 eth0  In  IP 10.244.1.1.44376 > 10.244.1.3.8080: Flags [S], seq 3425111815, win 65495, options [mss 65495,sackOK,TS val 513072747 ecr 0,nop,wscale 7], length 0
+12:02:08.212867 eth0  Out IP 10.244.1.3.8080 > 10.244.1.1.44376: Flags [S.], seq 977805893, ack 3425111816, win 65483, options [mss 65495,sackOK,TS val 1556241818 ecr 513072747,nop,wscale 7], length 0
+12:02:08.212903 eth0  In  IP 10.244.1.1.44376 > 10.244.1.3.8080: Flags [.], ack 1, win 512, options [nop,nop,TS val 513072747 ecr 1556241818], length 0
+12:02:08.213273 eth0  In  IP 10.244.1.1.44376 > 10.244.1.3.8080: Flags [P.], seq 1:110, ack 1, win 512, options [nop,nop,TS val 513072748 ecr 1556241818], length 109: HTTP: GET /healthz HTTP/1.1
+12:02:08.213470 eth0  Out IP 10.244.1.3.8080 > 10.244.1.1.44376: Flags [.], ack 110, win 511, options [nop,nop,TS val 1556241819 ecr 513072748], length 0
+12:02:08.213705 eth0  Out IP 10.244.1.3.8080 > 10.244.1.1.44376: Flags [P.], seq 1:146, ack 110, win 512, options [nop,nop,TS val 1556241819 ecr 513072748], length 145: HTTP: HTTP/1.1 200 OK
+12:02:08.213726 eth0  In  IP 10.244.1.1.44376 > 10.244.1.3.8080: Flags [.], ack 146, win 511, options [nop,nop,TS val 513072748 ecr 1556241819], length 0
+12:02:08.213743 eth0  Out IP 10.244.1.3.8080 > 10.244.1.1.44376: Flags [F.], seq 146, ack 110, win 512, options [nop,nop,TS val 1556241819 ecr 513072748], length 0
+      --- capture on backend-6d448c44cf-scn8g ---
+12:02:13.391407 eth0  In  IP 10.244.1.1.55258 > 10.244.1.2.8080: Flags [S], seq 4111203211, win 65495, options [mss 65495,sackOK,TS val 560577781 ecr 0,nop,wscale 7], length 0
+12:02:13.391443 eth0  Out IP 10.244.1.2.8080 > 10.244.1.1.55258: Flags [S.], seq 204854642, ack 4111203212, win 65483, options [mss 65495,sackOK,TS val 873451307 ecr 560577781,nop,wscale 7], length 0
+12:02:13.391479 eth0  In  IP 10.244.1.1.55258 > 10.244.1.2.8080: Flags [.], ack 1, win 512, options [nop,nop,TS val 560577781 ecr 873451307], length 0
+12:02:13.391809 eth0  In  IP 10.244.1.1.55258 > 10.244.1.2.8080: Flags [P.], seq 1:110, ack 1, win 512, options [nop,nop,TS val 560577781 ecr 873451307], length 109: HTTP: GET /healthz HTTP/1.1
+12:02:13.391831 eth0  Out IP 10.244.1.2.8080 > 10.244.1.1.55258: Flags [.], ack 110, win 511, options [nop,nop,TS val 873451307 ecr 560577781], length 0
+12:02:13.391909 eth0  Out IP 10.244.1.2.8080 > 10.244.1.1.55258: Flags [P.], seq 1:146, ack 110, win 512, options [nop,nop,TS val 873451307 ecr 560577781], length 145: HTTP: HTTP/1.1 200 OK
+12:02:13.391936 eth0  In  IP 10.244.1.1.55258 > 10.244.1.2.8080: Flags [.], ack 146, win 511, options [nop,nop,TS val 560577781 ecr 873451307], length 0
+12:02:13.391956 eth0  Out IP 10.244.1.2.8080 > 10.244.1.1.55258: Flags [F.], seq 146, ack 110, win 512, options [nop,nop,TS val 873451307 ecr 560577781], length 0
+
+--- L8  NODE LEVEL: kube-proxy DNAT rules -----------------------
+    kube-proxy translates ClusterIP:80 into podIP:<targetPort>.
+    The rule below is the ground truth for where traffic is actually sent:
+    cluster-IP rule (KUBE-SVC-NU3EPORMY7BJPWSM):
+      -N KUBE-SVC-NU3EPORMY7BJPWSM
+      -A KUBE-SVC-NU3EPORMY7BJPWSM ! -s 10.244.0.0/16 -d 10.96.116.237/32 -p tcp -m comment --comment "imesh-demo/backend:http cluster IP" -m tcp --dport 80 -j KUBE-MARK-MASQ
+      -A KUBE-SVC-NU3EPORMY7BJPWSM -m comment --comment "imesh-demo/backend:http -> 10.244.1.2:9090" -m statistic --mode random --probability 0.50000000000 -j KUBE-SEP-W63RYVPXPK4XVHZR
+      -A KUBE-SVC-NU3EPORMY7BJPWSM -m comment --comment "imesh-demo/backend:http -> 10.244.1.3:9090" -j KUBE-SEP-N5YRTSCBPFTO5KR7
+    
+    per-endpoint DNAT rules (these contain the real destination port):
+      -N KUBE-SEP-W63RYVPXPK4XVHZR
+      -A KUBE-SEP-W63RYVPXPK4XVHZR -s 10.244.1.2/32 -m comment --comment "imesh-demo/backend:http" -j KUBE-MARK-MASQ
+      -A KUBE-SEP-W63RYVPXPK4XVHZR -p tcp -m comment --comment "imesh-demo/backend:http" -m tcp -j DNAT --to-destination 10.244.1.2:9090
+      -N KUBE-SEP-N5YRTSCBPFTO5KR7
+      -A KUBE-SEP-N5YRTSCBPFTO5KR7 -s 10.244.1.3/32 -m comment --comment "imesh-demo/backend:http" -j KUBE-MARK-MASQ
+      -A KUBE-SEP-N5YRTSCBPFTO5KR7 -p tcp -m comment --comment "imesh-demo/backend:http" -m tcp -j DNAT --to-destination 10.244.1.3:9090
+    
+    for contrast - the healthy frontend Service:
+      -N KUBE-SEP-C7LWXXTEK2C6BMKO
+      -A KUBE-SEP-C7LWXXTEK2C6BMKO -s 10.244.1.4/32 -m comment --comment "imesh-demo/frontend:http" -j KUBE-MARK-MASQ
+      -A KUBE-SEP-C7LWXXTEK2C6BMKO -p tcp -m comment --comment "imesh-demo/frontend:http" -m tcp -j DNAT --to-destination 10.244.1.4:8080
+      -N KUBE-SEP-U3WM7YOQV2E4SOX2
+      -A KUBE-SEP-U3WM7YOQV2E4SOX2 -s 10.244.1.5/32 -m comment --comment "imesh-demo/frontend:http" -j KUBE-MARK-MASQ
+      -A KUBE-SEP-U3WM7YOQV2E4SOX2 -p tcp -m comment --comment "imesh-demo/frontend:http" -m tcp -j DNAT --to-destination 10.244.1.5:8080
+
+--- L9  IDENTIFY: root cause ----------------------------------
+    Service backend .spec.ports[0].targetPort  = 9090
+    backend container .ports[0].containerPort   = 8080
+    FAIL MISMATCH  ->  kube-proxy sends traffic to podIP:9090 but nginx listens on :8080
+
+  ROOT CAUSE: the backend Service targetPort (9090) does not match the port
+  the backend container actually listens on (8080).  The Service object
+  re-points ClusterIP:80 at a closed port, so every frontend -> backend
+  connection is rejected with a TCP RST ("Connection refused").
+  The pod, the application and DNS are all healthy - only the
+  Service -> pod port mapping is wrong.
+
+
+    run scripts/06-fix.sh to correct the Service, then scripts/07-verify-fixed.sh

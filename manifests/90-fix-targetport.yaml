@@ -1,0 +1,24 @@
+##############################################################################
+# THE FIX  -  restores the backend Service to a working targetPort.
+#
+#   targetPort: 9090  ->  targetPort: 8080   (the port the container listens on)
+#
+#   This is applied by scripts/06-fix.sh
+##############################################################################
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: imesh-demo
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: imesh-demo
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: backend
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP
