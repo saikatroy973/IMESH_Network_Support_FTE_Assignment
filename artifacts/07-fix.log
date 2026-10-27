@@ -16,6 +16,6 @@ service/backend configured
             -p='[{"op":"replace","path":"/spec/ports/0/targetPort","value":8080}]'
     
     the backend pods were never restarted - only the Service was corrected:
-      backend-6d448c44cf-7vbxf   1/1   Running   0     91s
-      backend-6d448c44cf-scn8g   1/1   Running   0     91s
+      backend-6d448c44cf-pt7pb   1/1   Running   0     93s
+      backend-6d448c44cf-tshwt   1/1   Running   0     93s
     OK   fix applied - Service targetPort now matches the container port

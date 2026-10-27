@@ -6,11 +6,11 @@
 #0 building with "desktop-linux" instance using docker driver
 
 #1 [internal] load build definition from Dockerfile
-#1 transferring dockerfile: 1.07kB done
+#1 transferring dockerfile: 1.07kB 0.0s done
 #1 DONE 0.0s
 
 #2 [internal] load metadata for docker.io/library/alpine:3.20
-#2 DONE 2.0s
+#2 DONE 1.8s
 
 #3 [internal] load .dockerignore
 #3 transferring context: 2B done
@@ -27,13 +27,13 @@
 #6 exporting layers done
 #6 exporting manifest sha256:c892e3c521917a9cb276f3064f0f7cc39215537f165b4a5d5ab099ee1e408fe8 done
 #6 exporting config sha256:6290a9ebad6e9026efd91f916108ff8a445ea26e7baf921934894ce490fdbc9e done
-#6 exporting attestation manifest sha256:c2df2596d9ba998ae843b9e93018a503aa304eedfc221e7b2b9309f4cb06decc done
-#6 exporting manifest list sha256:fcd9a404c9ac6aa30b33848a8399b1584eaca4f9b502f5dc4cf697115638d397 done
+#6 exporting attestation manifest sha256:498fcb47f328910b3a933fdef538f9d11495925719d4efe644055ee5a35abe78 done
+#6 exporting manifest list sha256:3d4d8e77920d28866d904148d1b0971293c6602589c59821961254f1cfa2a63b done
 #6 naming to docker.io/library/imesh-demo-app:1.0.0 done
 #6 unpacking to docker.io/library/imesh-demo-app:1.0.0 done
 #6 DONE 0.0s
     loading into kind nodes ...
-Image: "imesh-demo-app:1.0.0" with ID "sha256:fcd9a404c9ac6aa30b33848a8399b1584eaca4f9b502f5dc4cf697115638d397" not yet present on node "imesh-worker", loading...
-Image: "imesh-demo-app:1.0.0" with ID "sha256:fcd9a404c9ac6aa30b33848a8399b1584eaca4f9b502f5dc4cf697115638d397" not yet present on node "imesh-control-plane", loading...
+Image: "imesh-demo-app:1.0.0" with ID "sha256:3d4d8e77920d28866d904148d1b0971293c6602589c59821961254f1cfa2a63b" not yet present on node "imesh-control-plane", loading...
+Image: "imesh-demo-app:1.0.0" with ID "sha256:3d4d8e77920d28866d904148d1b0971293c6602589c59821961254f1cfa2a63b" not yet present on node "imesh-worker", loading...
     OK   image 'imesh-demo-app:1.0.0' is available in the cluster
-imesh-demo-app:1.0.0  fcd9a404c9ac  48.4MB
+imesh-demo-app:1.0.0  3d4d8e77920d  48.4MB

@@ -84,7 +84,7 @@ kubectl -n imesh-demo get deploy,svc,endpoints
 **On screen (Tab B):**
 
 ```
-[12:01:54Z] client -> frontend  http_code=200  |  client -> frontend(/api/) -> backend  http_code=200
+[18:26:41Z] client -> frontend  http_code=200  |  client -> frontend(/api/) -> backend  http_code=200
 ```
 
 > "And here's the client workload polling every ten seconds. Both checks are
@@ -111,7 +111,7 @@ kubectl -n imesh-demo get deploy,svc,endpoints
 **On screen (Tab B):**
 
 ```
-[12:02:04Z] client -> frontend  http_code=200  |  client -> frontend(/api/) -> backend  http_code=502
+[18:27:21Z] client -> frontend  http_code=200  |  client -> frontend(/api/) -> backend  http_code=502
 ```
 
 > "Within ten seconds the customer sees it: the frontend itself is still
@@ -156,8 +156,12 @@ kubectl -n imesh-demo exec deploy/frontend -- \
 
 > "Now I walk the stack layer by layer, and I don't skip ahead.
 >
-> **Layer 1, DNS.** `getent` and `dig` both return the ClusterIP. DNS is
-> healthy.
+> **Layer 1, DNS.** `getent`, `dig` and `nslookup` all return the ClusterIP.
+> DNS is healthy.
+>
+> I also check NetworkPolicy explicitly — `kubectl get networkpolicy -A` shows
+> none, and kind's default CNI doesn't enforce them anyway. But the refusal
+> already told us packets aren't being dropped.
 >
 > **Layer 2, the Service.** `describe svc backend` shows `TargetPort: 9090`.
 > First red flag.
@@ -226,7 +230,7 @@ wait
 > completes a full handshake and gets 200 OK.
 >
 > And finally, at the node level, kube-proxy's own rules state the root cause
-> literally: `DNAT --to-destination 10.244.1.3:9090`. Compare with the
+> literally: `DNAT --to-destination 10.244.1.5:9090`. Compare with the
 > healthy frontend service on the same node, which DNATs to port 8080."
 
 **On screen:**
@@ -286,7 +290,7 @@ kubectl -n imesh-demo get pod -l app.kubernetes.io/name=backend \
 **On screen (Tab B):**
 
 ```
-[12:03:04Z] client -> frontend  http_code=200  |  client -> frontend(/api/) -> backend  http_code=200
+[18:27:51Z] client -> frontend  http_code=200  |  client -> frontend(/api/) -> backend  http_code=200
 ```
 
 > "And from the customer's point of view, the 502s are gone.

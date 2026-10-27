@@ -3,17 +3,17 @@
   STEP 5 - Inject the networking fault
 ==========================================================================
     backend Service BEFORE the fault:
-      backend   ClusterIP   10.96.116.237   <none>   80/TCP   68s   app.kubernetes.io/name=backend
+      backend   ClusterIP   10.96.126.148   <none>   80/TCP   69s   app.kubernetes.io/name=backend
       targetPort = 8080
     
     applying manifests/40-fault-targetport.yaml ...
 service/backend configured
     
     backend Service AFTER the fault:
-      backend   ClusterIP   10.96.116.237   <none>   80/TCP   68s   app.kubernetes.io/name=backend
+      backend   ClusterIP   10.96.126.148   <none>   80/TCP   69s   app.kubernetes.io/name=backend
       targetPort = 9090
     
     the pods are untouched - no restart, no deletion:
-      backend-6d448c44cf-7vbxf   1/1   Running   0     68s
-      backend-6d448c44cf-scn8g   1/1   Running   0     68s
+      backend-6d448c44cf-pt7pb   1/1   Running   0     69s
+      backend-6d448c44cf-tshwt   1/1   Running   0     69s
     OK   fault injected - frontend -> backend is now broken

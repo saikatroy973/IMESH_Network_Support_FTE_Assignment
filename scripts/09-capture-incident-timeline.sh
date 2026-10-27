@@ -15,11 +15,20 @@ require_tools kubectl
 
 banner "STEP 9 - Capture the incident timeline"
 
-OUT="${REPO_ROOT}/artifacts/incident-timeline.txt"
+OUT="${ARTIFACTS_DIR:-${REPO_ROOT}/artifacts}/incident-timeline.txt"
+mkdir -p "$(dirname "${OUT}")"
+
+# Only consider log lines written from now on. When this step runs at the end
+# of run-all.sh the log already contains an earlier fault window, and section 1
+# must show a genuinely healthy state rather than stale 502s.
+T0="$(date -u +%FT%TZ)"
 
 log_client() {
-  k logs deploy/client --tail=4 2>/dev/null | sed 's/^/      /' || true
+  k logs deploy/client --since-time="${T0}" --tail=4 2>/dev/null | sed 's/^/      /' || true
 }
+
+# Give the client's 10-second loop time to produce four fresh healthy samples.
+sleep 45
 
 # --- 1. healthy state ------------------------------------------------------
 {

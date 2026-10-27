@@ -35,8 +35,18 @@ test_app_healthy backend  BACKEND-OK  8080 || rc=1
 test_app_healthy frontend FRONTEND-OK 8080 || rc=1
 
 info ""
-info "client health loop (last 3 lines):"
-k logs -l app.kubernetes.io/name=client --tail=3 2>/dev/null | sed 's/^/      /' || true
+info "client health loop (fresh samples recorded after the fix):"
+# The client polls every 10 seconds, so immediately after the fix its most
+# recent lines may still be pre-fix 502s. Wait for two fresh healthy samples
+# (up to 30s) so this excerpt reflects the verified state.
+T_FIX="$(date -u +%FT%TZ)"
+for _ in $(seq 1 30); do
+  n="$(k logs deploy/client --since-time="${T_FIX}" 2>/dev/null \
+       | grep -c 'backend  http_code=200' || true)"
+  [[ "${n:-0}" -ge 2 ]] && break
+  sleep 1
+done
+k logs deploy/client --since-time="${T_FIX}" --tail=3 2>/dev/null | sed 's/^/      /' || true
 
 if [[ $rc -eq 0 ]]; then
   ok "RESOLVED - the full flow client -> frontend -> backend works again"

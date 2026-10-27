@@ -41,8 +41,35 @@ info "getent hosts backend.${NAMESPACE}.svc.cluster.local:"
 kexec_q frontend getent hosts "${BACKEND_SVC}" 2>&1 | sed 's/^/      /' || true
 info "dig +short (from the client pod, to show CoreDNS is answering):"
 kexec_q client dig +short "${BACKEND_SVC}" 2>&1 | sed 's/^/      /' || true
+info "nslookup (the same query with a different resolver tool):"
+kexec_q client nslookup "${BACKEND_SVC}" 2>&1 | grep -vE "recursion not available" | sed 's/^/      /' || true
 info "Service ClusterIP from the API:"
 k get svc backend -o wide --no-headers | sed 's/^/      /'
+
+# ---------------------------------------------------------------------------
+printf '\n%s--- L1b NETWORK POLICY: is anything filtering the traffic? -----%s\n' "${C_BOLD}" "${C_RESET}"
+info "kubectl get networkpolicy (namespace ${NAMESPACE}):"
+if k get networkpolicy --no-headers 2>/dev/null | grep -q .; then
+  k get networkpolicy --no-headers | sed 's/^/      /'
+else
+  info "      <none> - no NetworkPolicy objects exist in this namespace"
+fi
+info ""
+info "kubectl get networkpolicy -A (whole cluster):"
+if k get networkpolicy -A --no-headers 2>/dev/null | grep -q .; then
+  k get networkpolicy -A --no-headers | sed 's/^/      /'
+else
+  info "      <none> - no NetworkPolicy objects exist anywhere in the cluster"
+fi
+info ""
+info "CNI in use:"
+k get pods -n kube-system --no-headers 2>/dev/null \
+  | grep -E "kindnet|calico|cilium|weave|flannel" | sed 's/^/      /' || true
+info ""
+warn "kind's default CNI (kindnetd) does NOT enforce NetworkPolicy at all, so a"
+warn "policy could not be the cause here even if one existed."
+info "This also matches the error we saw: a policy drop produces a TIMEOUT,"
+info "whereas we got 'Connection refused' (an active TCP RST)."
 
 # ---------------------------------------------------------------------------
 printf '\n%s--- L2  SERVICE: what does the backend Service map to? ---------%s\n' "${C_BOLD}" "${C_RESET}"
@@ -83,11 +110,13 @@ k logs -l app.kubernetes.io/name=backend --tail=5 --prefix 2>&1 | sed 's/^/     
 # ---------------------------------------------------------------------------
 printf '\n%s--- L6  CROSS-CHECK: bypass the Service and hit the pod IP -----%s\n' "${C_BOLD}" "${C_RESET}"
 info "backend pod IP = ${BACKEND_POD_IP}"
-info "a) frontend -> podIP:8080   (the port the app really listens on):"
+info "a) frontend -> podIP (ICMP)  - is the pod even routable?"
+kexec_q frontend ping -c 2 -W 2 "${BACKEND_POD_IP}" 2>&1 | tail -3 | sed 's/^/      /' || true
+info "b) frontend -> podIP:8080    (the port the app really listens on):"
 kexec_q frontend curl -sS --max-time 5 "http://${BACKEND_POD_IP}:8080/" 2>&1 | sed 's/^/      /' || true
-info "b) frontend -> podIP:9090   (the port the Service is now pointing at):"
+info "c) frontend -> podIP:9090    (the port the Service is now pointing at):"
 kexec_q frontend curl -sS --max-time 5 "http://${BACKEND_POD_IP}:9090/" 2>&1 | sed 's/^/      /' || true
-info "c) frontend -> ClusterIP:80 (the Service, i.e. the reported symptom):"
+info "d) frontend -> ClusterIP:80  (the Service, i.e. the reported symptom):"
 kexec_q frontend curl -sS --max-time 5 "http://$(svc_ip backend):80/" 2>&1 | sed 's/^/      /' || true
 
 # ---------------------------------------------------------------------------

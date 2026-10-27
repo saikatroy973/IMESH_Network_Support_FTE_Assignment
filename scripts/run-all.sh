@@ -38,4 +38,10 @@ run 06-diagnose.sh         06-diagnose.log
 run 07-fix.sh              07-fix.log
 run 08-verify-fixed.sh     08-verify-fixed.log
 
+# Step 9 deliberately re-injects the fault for ~25s so the customer-visible
+# 200 -> 502 -> 200 transition is captured from the client workload's logs.
+# It fixes the fault again at the end, so the cluster is left healthy.
+echo ""
+bash "${S}/09-capture-incident-timeline.sh"
+
 banner "COMPLETE - full assignment flow reproduced end to end"

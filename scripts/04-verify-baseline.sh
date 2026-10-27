@@ -25,7 +25,7 @@ test_app_healthy frontend FRONTEND-OK 8080 || rc=1
 
 info ""
 info "client health loop (last 3 lines):"
-k logs -l app.kubernetes.io/name=client --tail=3 --tail=3 2>/dev/null | sed 's/^/      /' || true
+k logs -l app.kubernetes.io/name=client --tail=3 2>/dev/null | sed 's/^/      /' || true
 
 if [[ $rc -eq 0 ]]; then
   ok "BASELINE HEALTHY - client -> frontend and frontend -> backend both work"

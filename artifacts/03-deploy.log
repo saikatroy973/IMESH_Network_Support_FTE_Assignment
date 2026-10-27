@@ -19,12 +19,12 @@ deployment "client" successfully rolled out
     waiting for the Service endpoints to be programmed into kube-proxy ...
     !    timed out waiting for ready endpoints
     pods:
-      backend-6d448c44cf-7vbxf    1/1   Running   0     67s   10.244.1.3   imesh-worker          <none>   <none>
-      backend-6d448c44cf-scn8g    1/1   Running   0     67s   10.244.1.2   imesh-worker          <none>   <none>
-      client-dccd6f788-cgcj6      1/1   Running   0     66s   10.244.0.5   imesh-control-plane   <none>   <none>
-      frontend-64bbfbffdf-c8nq4   1/1   Running   0     66s   10.244.1.5   imesh-worker          <none>   <none>
-      frontend-64bbfbffdf-hb7dc   1/1   Running   0     66s   10.244.1.4   imesh-worker          <none>   <none>
+      backend-6d448c44cf-pt7pb    1/1   Running   0     68s   10.244.1.5   imesh-worker          <none>   <none>
+      backend-6d448c44cf-tshwt    1/1   Running   0     68s   10.244.1.2   imesh-worker          <none>   <none>
+      client-dccd6f788-q84gz      1/1   Running   0     68s   10.244.0.5   imesh-control-plane   <none>   <none>
+      frontend-64bbfbffdf-6s2lj   1/1   Running   0     68s   10.244.1.3   imesh-worker          <none>   <none>
+      frontend-64bbfbffdf-z2s68   1/1   Running   0     68s   10.244.1.4   imesh-worker          <none>   <none>
     services:
-      backend    ClusterIP   10.96.116.237   <none>   80/TCP   67s
-      frontend   ClusterIP   10.96.139.236   <none>   80/TCP   66s
+      backend    ClusterIP   10.96.126.148   <none>   80/TCP   68s
+      frontend   ClusterIP   10.96.58.255    <none>   80/TCP   68s
     OK   application deployed

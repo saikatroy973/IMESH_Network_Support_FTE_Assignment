@@ -18,7 +18,10 @@ finding the first stage that misbehaves.
 ```
   ┌─────────────────────────────────────────────────────────────────────┐
   │  L1  DNS          service name  ──►  ClusterIP                     │
-  │      getent hosts / dig                                              │
+  │      getent hosts / dig / nslookup                                   │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │  L1b Policy       allowed?         ──►  drop or pass                │
+  │      kubectl get networkpolicy / CNI check                           │
   ├─────────────────────────────────────────────────────────────────────┤
   │  L2  Service      ClusterIP:80     ──►  (selector, port/targetPort) │
   │      kubectl get svc / describe svc                                 │
@@ -26,17 +29,23 @@ finding the first stage that misbehaves.
   │  L3  Endpoints    selector         ──►  podIP:port                  │
   │      kubectl get endpoints / endpointslices                         │
   ├─────────────────────────────────────────────────────────────────────┤
-  │  L4  Pod spec     containerPort    ──►  what the app should listen on
+  │  L4  Pod spec     containerPort    ──►  what the app should listen on│
   │      kubectl describe pod                                           │
   ├─────────────────────────────────────────────────────────────────────┤
   │  L5  App socket   process          ──►  what it ACTUALLY listens on│
   │      ss -lntp                                                        │
   ├─────────────────────────────────────────────────────────────────────┤
-  │  L6  Wire         packets          ──►  SYN / SYN-ACK / RST        │
+  │  L6  Cross-check  podIP:port       ──►  works without the Service?  │
+  │      ping / curl <podIP>:<port>                                     │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │  L7  Wire         packets          ──►  SYN / SYN-ACK / RST        │
   │      tcpdump                                                        │
   ├─────────────────────────────────────────────────────────────────────┤
-  │  L7  kube-proxy   DNAT rules       ──►  ClusterIP → podIP:port     │
+  │  L8  kube-proxy   DNAT rules       ──►  ClusterIP → podIP:port     │
   │      iptables -t nat -S KUBE-SVC-…                                  │
+  ├─────────────────────────────────────────────────────────────────────┤
+  │  L9  Identify     targetPort       ──►  containerPort / listen port│
+  │      jsonpath comparison + MISMATCH                                 │
   └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -74,11 +83,11 @@ kubectl -n imesh-demo exec deploy/frontend -- \
 
 ```
 * Host backend.imesh-demo.svc.cluster.local:80 was resolved.
-* IPv4: 10.96.116.237
-*   Trying 10.96.116.237:80...
-* connect to 10.96.116.237 port 80 from 10.244.1.5 port 53878 failed: Connection refused
-* Failed to connect to backend.imesh-demo.svc.cluster.local port 80 after 0 ms: Could not connect to server
-curl: (7) Failed to connect to backend.imesh-demo.svc.cluster.local port 80 after 0 ms: Could not connect to server
+* IPv4: 10.96.126.148
+*   Trying 10.96.126.148:80...
+* connect to 10.96.126.148 port 80 from 10.244.1.3 port 43898 failed: Connection refused
+* Failed to connect to backend.imesh-demo.svc.cluster.local port 80 after 1 ms: Could not connect to server
+curl: (7) Failed to connect to backend.imesh-demo.svc.cluster.local port 80 after 1 ms: Could not connect to server
 ```
 
 Two facts extracted immediately:
@@ -98,17 +107,50 @@ kubectl -n imesh-demo exec deploy/frontend -- \
   getent hosts backend.imesh-demo.svc.cluster.local
 kubectl -n imesh-demo exec deploy/client -- \
   dig +short backend.imesh-demo.svc.cluster.local
+kubectl -n imesh-demo exec deploy/client -- \
+  nslookup backend.imesh-demo.svc.cluster.local
 kubectl -n imesh-demo get svc backend -o wide
 ```
 
 ```
-10.96.116.237       backend.imesh-demo.svc.cluster.local
-10.96.116.237
-backend   ClusterIP   10.96.116.237   <none>   80/TCP
+10.96.126.148       backend.imesh-demo.svc.cluster.local
+10.96.126.148
+Server:  10.96.0.10
+Address: 10.96.0.10#53
+
+Name:    backend.imesh-demo.svc.cluster.local
+Address: 10.96.126.148
+
+backend   ClusterIP   10.96.126.148   <none>   80/TCP
 ```
 
-**Verdict: healthy.** The FQDN resolves to the ClusterIP, and the ClusterIP in
-the API matches the address curl dialled.
+**Verdict: healthy.** The FQDN resolves to the ClusterIP with three different
+resolver tools, and the ClusterIP in the API matches the address curl dialled.
+
+---
+
+## L1b — NetworkPolicy
+
+The assignment's troubleshooting toolkit includes `kubectl get networkpolicy`.
+It is worth running it explicitly, even though the error string already makes a
+policy unlikely: a **drop** produces a timeout, and we saw a RST.
+
+```bash
+kubectl -n imesh-demo get networkpolicy
+kubectl -n imesh-demo get networkpolicy -A
+kubectl -n kube-system get pods | grep -E 'kindnet|calico|cilium'
+```
+
+```
+No resources found in imesh-demo namespace.
+kindnet-6t57k   1/1   Running   0   2m29s
+kindnet-748cx   1/1   Running   0   2m34s
+```
+
+**Verdict: ruled out.** No NetworkPolicy objects exist anywhere in the cluster.
+Separately, kind's default CNI (`kindnetd`) does not enforce NetworkPolicy at
+all, so a policy could not have caused this failure even if one had been
+present. This is documented as a limitation in the README.
 
 ---
 
@@ -137,8 +179,8 @@ kubectl -n imesh-demo get endpointslices -l kubernetes.io/service-name=backend -
 ```
 
 ```
-backend   10.244.1.2:9090,10.244.1.3:9090
-endpoints=10.244.1.3 10.244.1.2  ready=true true  ports=9090
+backend   10.244.1.2:9090,10.244.1.5:9090
+endpoints=10.244.1.5 10.244.1.2  ready=true true  ports=9090
 ```
 
 **This is the trap.** The endpoints are present and `ready=true`, so the
@@ -179,10 +221,8 @@ kubectl -n imesh-demo logs -l app.kubernetes.io/name=backend --tail=5 --prefix
 State  Recv-Q Send-Q Local Address:Port Peer Address:Port Process
 LISTEN 0      511          0.0.0.0:8080      0.0.0.0:*  users:(("nginx",pid=1,fd=6))
 
-```
-[pod/backend-…-7vbxf/backend] 10.244.1.4 - - [21/Oct/2026:11:56:11 +0000] "GET / HTTP/1.1" 200 60 "-" "curl/8.14.1"
-[pod/backend-…-scn8g/backend] 10.244.1.5 - - [21/Oct/2026:11:56:41 +0000] "GET / HTTP/1.0" 200 60 "-" "curl/8.14.1"
-```
+[pod/backend-…-tshwt/backend] 10.244.1.4 - - [27/Oct/2026:18:25:01 +0000] "GET / HTTP/1.0" 200 60 "-" "curl/8.14.1"
+[pod/backend-…-pt7pb/backend] 10.244.1.3 - - [27/Oct/2026:18:25:11 +0000] "GET / HTTP/1.0" 200 60 "-" "curl/8.14.1"
 ```
 
 `ss -lntp` is the ground truth: the process is listening on **8080** and
@@ -200,25 +240,27 @@ A Service pointing at the wrong port is invisible to kubelet.
 BACKEND_POD_IP=$(kubectl -n imesh-demo get pod -l app.kubernetes.io/name=backend \
   -o jsonpath='{.items[0].status.podIP}')
 
+kubectl -n imesh-demo exec deploy/frontend -- ping -c 2 $BACKEND_POD_IP            # works
 kubectl -n imesh-demo exec deploy/frontend -- curl http://$BACKEND_POD_IP:8080/   # works
 kubectl -n imesh-demo exec deploy/frontend -- curl http://$BACKEND_POD_IP:9090/   # refused
-kubectl -n imesh-demo exec deploy/frontend -- curl http://10.96.116.237:80/         # refused
+kubectl -n imesh-demo exec deploy/frontend -- curl http://10.96.126.148:80/         # refused
 ```
 
 ```
-a) frontend -> podIP:8080   -> BACKEND-OK  pod=backend-6d448c44cf-7vbxf  client=10.244.1.4
-b) frontend -> podIP:9090   -> curl: (7) Failed to connect to 10.244.1.2 port 9090 … Connection refused
-c) frontend -> ClusterIP:80 -> curl: (7) Failed to connect to 10.96.116.237 port 80 … Connection refused
+a) frontend -> podIP (ICMP) -> 2 packets transmitted, 2 received, 0% packet loss
+b) frontend -> podIP:8080   -> BACKEND-OK  pod=backend-6d448c44cf-pt7pb  client=10.244.1.3
+c) frontend -> podIP:9090   -> curl: (7) Failed to connect to 10.244.1.5 port 9090 … Connection refused
+d) frontend -> ClusterIP:80 -> curl: (7) Failed to connect to 10.96.126.148 port 80 … Connection refused
 ```
 
 **This is the decisive experiment.** It proves, in one shot:
 
-* the pod network works (a) — CNI, routing and the pod's own firewall are fine;
-* the application works (a) — it is serving traffic;
-* the failure is reproduced only through the Service's port mapping (c);
-* the Service's chosen destination port is closed (b).
+* the pod network works (a, b) — CNI, routing, ICMP and the pod's own firewall are fine;
+* the application works (b) — it is serving traffic;
+* the failure is reproduced only through the Service's port mapping (d);
+* the Service's chosen destination port is closed (c).
 
-If (a) had also failed, the fault would be below the Service (CNI / network).
+If (a) or (b) had also failed, the fault would be below the Service (CNI / network).
 
 ---
 
@@ -239,8 +281,8 @@ wait
 ```
 
 ```
-12:02:00.780282 eth0  In  IP 10.244.1.5.50200 > 10.244.1.3.9090: Flags [S], seq 2171988689, win 65495, … length 0
-12:02:00.780294 eth0  Out IP 10.244.1.3.9090 > 10.244.1.5.50200: Flags [R.], seq 0, ack 2171988690, win 0, length 0
+18:26:00.035147 eth0  In  IP 10.244.1.3.39602 > 10.244.1.2.9090: Flags [S], seq 1722763787, win 65495, … length 0
+18:26:00.035152 eth0  Out IP 10.244.1.2.9090 > 10.244.1.3.39602: Flags [R.], seq 0, ack 1722763788, win 0, length 0
 ```
 
 The **SYN arrives at the backend pod on port 9090** — this is the DNAT destination, so the Service's
@@ -249,8 +291,8 @@ The **SYN arrives at the backend pod on port 9090** — this is the DNAT destina
 The contrast capture on the working port, same pod, same node:
 
 ```
-12:02:08.212841 eth0  In  IP 10.244.1.1.35410 > 10.244.1.2.8080: Flags [S], seq 332816736, win 65495, … length 0
-12:02:08.213705 eth0  Out IP 10.244.1.2.8080 > 10.244.1.1.35410: Flags [P.], … length 145: HTTP: HTTP/1.1 200 OK
+18:26:14.686455 eth0  In  IP 10.244.1.1.48986 > 10.244.1.2.8080: Flags [S], seq 1718378391, win 65495, … length 0
+18:26:14.686847 eth0  Out IP 10.244.1.2.8080 > 10.244.1.1.48986: Flags [P.], … length 145: HTTP: HTTP/1.1 200 OK
 ```
 
 The kubelet's own probe on **8080** completes a full three-way handshake and gets `200 OK`.
@@ -261,10 +303,6 @@ The kubelet's own probe on **8080** completes a full three-way handshake and get
 > the capture on **every** replica, because the Service load-balances between
 > them and a single-pod capture will miss the traffic roughly half the time.
 
-> Capturing inside the pod shows the *post-DNAT* destination. Capturing in the
-> client pod shows the *pre-DNAT* ClusterIP. Capture in the **destination** pod
-> when you want to prove where kube-proxy actually sent the traffic.
-
 ---
 
 ## L8 — kube-proxy's rules (node level)
@@ -272,21 +310,21 @@ The kubelet's own probe on **8080** completes a full three-way handshake and get
 ```bash
 docker exec imesh-worker iptables -t nat -S KUBE-SERVICES | grep 'imesh-demo/backend'
 docker exec imesh-worker iptables -t nat -S KUBE-SVC-NU3EPORMY7BJPWSM
-docker exec imesh-worker iptables -t nat -S KUBE-SEP-N5YRTSCBPFTO5KR7
+docker exec imesh-worker iptables -t nat -S KUBE-SEP-KWKLRVL7J2CICKIV
 ```
 
 ```
--A KUBE-SVC-NU3EPORMY7BJPWSM ... --comment "imesh-demo/backend:http -> 10.244.1.3:9090" \
-   -m statistic --mode random --probability 0.50000000000 -j KUBE-SEP-N5YRTSCBPFTO5KR7
+-A KUBE-SVC-NU3EPORMY7BJPWSM ... --comment "imesh-demo/backend:http -> 10.244.1.5:9090" \
+   -m statistic --mode random --probability 0.50000000000 -j KUBE-SEP-KWKLRVL7J2CICKIV
 -A KUBE-SVC-NU3EPORMY7BJPWSM ... --comment "imesh-demo/backend:http -> 10.244.1.2:9090" -j KUBE-SEP-W63RYVPXPK4XVHZR
 
--A KUBE-SEP-N5YRTSCBPFTO5KR7 -p tcp ... -j DNAT --to-destination 10.244.1.3:9090
+-A KUBE-SEP-KWKLRVL7J2CICKIV -p tcp ... -j DNAT --to-destination 10.244.1.5:9090
 ```
 
 For contrast, the **healthy** frontend Service on the same node:
 
 ```
--A KUBE-SEP-U3WM7YOQV2E4SOX2 -p tcp ... -j DNAT --to-destination 10.244.1.5:8080
+-A KUBE-SEP-XOAH7QOUDJ4CCN77 -p tcp ... -j DNAT --to-destination 10.244.1.3:8080
 ```
 
 **The DNAT rule literally contains the wrong port.** This is the most
@@ -301,7 +339,7 @@ Reading the rule structure:
   backend replicas).
 * `KUBE-SEP-…` — per-endpoint chain, holds the actual `DNAT --to-destination`.
 * `KUBE-MARK-MASQ` — marks the packet so the reply is source-NAT'd back to the
-  ClusterIP (why the client sees `10.96.116.237` as the peer, not the pod IP).
+  ClusterIP (why the client sees `10.96.126.148` as the peer, not the pod IP).
 
 ---
 
