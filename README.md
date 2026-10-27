@@ -1,6 +1,6 @@
 # Kubernetes Network Troubleshooting — Support Engineer Assignment
 
-**Repository:** `IMESH` — Network Support Engineer assignment
+**Repository:** [github.com/saikatroy973/IMESH_Network_Support_FTE_Assignment](https://github.com/saikatroy973/IMESH_Network_Support_FTE_Assignment)
 **Environment:** local Kubernetes cluster created with **kind v0.33.0** (Kubernetes **v1.37.0**, Docker Desktop 29.6.2, macOS / arm64)
 **CNI:** kindnetd (the kind default)
 
@@ -56,7 +56,8 @@ kubectl version --client
 ### One command
 
 ```bash
-git clone <this-repo> && cd IMESH
+git clone https://github.com/saikatroy973/IMESH_Network_Support_FTE_Assignment.git
+cd IMESH_Network_Support_FTE_Assignment
 ./scripts/run-all.sh --recreate
 ```
 

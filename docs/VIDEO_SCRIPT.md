@@ -14,7 +14,7 @@ readable size, `kubectl` + `bash scripts/…` on screen.
 docker info                        # Docker daemon must be running
 kind version && kubectl version --client
 
-cd IMESH
+cd IMESH_Network_Support_FTE_Assignment
 ./scripts/00-reset.sh              # clean slate
 ./scripts/run-all.sh --recreate   # pre-build everything so the recording is smooth
 ```
