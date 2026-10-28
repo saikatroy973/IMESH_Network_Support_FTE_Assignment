@@ -24,14 +24,26 @@ troubleshooting runbook that finds the root cause and the fix that resolves it.
 
 ### Application flow
 
+```mermaid
+flowchart LR
+    subgraph CP["imesh-control-plane"]
+        C["client pod<br/>health loop every 10s"]
+    end
+
+    subgraph WK["imesh-worker"]
+        SF["Service frontend<br/>ClusterIP :80"]
+        F["frontend pods ×2<br/>nginx :8080"]
+        SB["Service backend<br/>ClusterIP :80"]
+        B["backend pods ×2<br/>nginx :8080"]
+    end
+
+    C -->|"GET /  and  GET /api/"| SF
+    SF -->|"targetPort 8080"| F
+    F -->|"reverse proxy /api/"| SB
+    SB -.->|"targetPort 9090  ✗"| B
 ```
-      ┌──────────────┐    ClusterIP     ┌──────────────┐    ClusterIP     ┌──────────────┐
-      │    client    │ ───────────────► │   frontend   │ ───────────────► │   backend    │
-      │ (control-    │   frontend:80    │  (nginx:8080)│  backend:80     │ (nginx:8080) │
-      │  plane node) │                  │  proxies     │                  │              │
-      └──────────────┘                  │  /api/ ──────┼────────────────► │              │
-                                        └──────────────┘                  └──────────────┘
-```
+
+*The dashed edge is the injected fault. Everything else in the picture is healthy.*
 
 * **backend** — nginx serving `BACKEND-OK`, listening on **:8080**. Service `backend` exposes port **80 → targetPort 8080**.
 * **frontend** — nginx serving `FRONTEND-OK` on `/` and reverse-proxying `/api/` to the backend Service. Listens on **:8080**. Service `frontend` exposes port **80 → targetPort 8080**.
@@ -311,6 +323,29 @@ kubelet — only the Service's `targetPort` had drifted.
 ClusterIP `10.96.126.148:80` → DNAT → `10.244.1.5:9090` → **nothing listening → TCP RST** →
 `Connection refused`.
 
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as client pod
+    participant SF as Service frontend
+    participant F as frontend pod
+    participant SB as Service backend
+    participant B as backend pod
+
+    Note over C,B: healthy leg
+    C->>SF: GET /
+    SF->>F: DNAT to :8080
+    F-->>C: 200 FRONTEND-OK
+
+    Note over C,B: broken leg
+    C->>SF: GET /api/
+    SF->>F: DNAT to :8080
+    F->>SB: proxy_pass backend:80
+    SB->>B: DNAT to :9090
+    B--xF: RST — nothing listening on 9090
+    F-->>C: 502 Bad Gateway
+```
+
 **Why the topology hid it.** The failure looked like "the backend is down", but the backend was the
 healthiest workload in the cluster:
 
@@ -454,6 +489,14 @@ The customer's symptom disappears the moment the `targetPort` is corrected.
 ---
 
 ## 9. Methodology — Observe → Investigate → Identify → Fix → Verify
+
+```mermaid
+flowchart LR
+    O["Observe<br/>exact error + what still works"] --> I["Investigate<br/>L0 → L9, prove each layer"]
+    I --> ID["Identify<br/>targetPort 9090 ≠ containerPort 8080"]
+    ID --> FX["Fix<br/>apply the declarative manifest"]
+    FX --> V["Verify<br/>same assertions + customer view"]
+```
 
 **Observe.** Start from the user's symptom, not from the cluster objects. Capture the exact error
 text — `Connection refused` versus `timeout` versus `could not resolve` immediately narrows the search
